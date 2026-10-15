@@ -1,0 +1,14 @@
+# Ignore local environment files and OS files
+.DS_Store
+.vscode/
+
+# Ignore Python caches
+__pycache__/
+*.pyc
+
+# Ignore large raw datasets
+data/
+
+# Ignore model weights and output checkpoints
+saved_models/
+results/
