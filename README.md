@@ -6,35 +6,40 @@ This setup is fully optimized for **NVIDIA H800 (80GB) GPUs** on the HKUST Super
 
 ---
 
-## 🛠️ Step 1: Rebuilding the Conda Environment
-
-To perfectly replicate the environment, package versions, and underlying CUDA libraries, rebuild the environment using Conda:
+## SuperPOD setup
 
 ```bash
-# 1. Clone the repository and navigate inside
 git clone git@github.com:celiatong/humor-detection.git
 cd humor-detection
 
-# 2. Build the environment from the universal blueprint
 conda env create -f environment.yml
 
-# 3. Activate your new environment
 conda activate humor
+mkdir -p logs results
+```
 
-## 🛠️ Step 2: Summit job:
+## Run a job
 
-sbatch train_sbatch.sh
+```bash
+sbatch train_sbatch.sh        # Original DeBERTa training
+bash train_sbatch.sh --help  # Report modes and required arguments
+```
 
+- `compare` ranks the three-seed results, saves the winner, and stops.
+- `ablation` reads the saved winner and rebuilds its ablation table.
+- `compare-and-ablate` runs both stages. Prefix `compare` or
+  `compare-and-ablate` with `baseline-then-` to train first.
 
-## 🛠️ Step 3: Handy Slurm Commands:
-Check your job's queue status:
+Report modes use Python 3.12+ and saved predictions. Supply the original
+`test.csv`, the prediction archives, and optionally `--matched-results results`
+for the local three-seed runs. Set `REPORT_PYTHON` if `python3` is older.
 
- bash squeue -u $USER
+For PyTorch training options, run `python src/train_transformer_pytorch.py --help`.
 
-Terminate/Stop a running job:
+## Monitor a job
 
- bash scancel <JOB_ID>
-
-Inspect real-time execution outputs:
-
- bash tail -f logs/job_<JOB_ID>.out
+```bash
+squeue -u "$USER"
+tail -f logs/job_<JOB_ID>.out
+scancel <JOB_ID>
+```

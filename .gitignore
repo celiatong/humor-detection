@@ -1,6 +1,7 @@
 # Ignore local environment files and OS files
 .DS_Store
 .vscode/
+.venv-compare/
 
 # Ignore Python caches
 __pycache__/
@@ -11,4 +12,5 @@ data/
 
 # Ignore model weights and output checkpoints
 saved_models/
+checkpoints/
 results/
