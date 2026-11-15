@@ -12,6 +12,89 @@
 #SBATCH --output=logs/job_%j.out
 #SBATCH --error=logs/job_%j.err
 
+usage() {
+    cat <<'EOF'
+Usage:
+  train_sbatch.sh [baseline]
+  train_sbatch.sh compare --final-test DIR --test-csv FILE --selection-out FILE [--matched-results DIR]
+  train_sbatch.sh ablation --selection FILE --cross-dataset DIR --test-csv FILE
+  train_sbatch.sh compare-and-ablate --final-test DIR --test-csv FILE --selection-out FILE --cross-dataset DIR [--matched-results DIR]
+  train_sbatch.sh baseline-then-compare [compare options]
+  train_sbatch.sh baseline-then-compare-and-ablate [compare-and-ablate options]
+
+The comparison and ablation modes evaluate existing predictions with Python 3.12.
+Set REPORT_PYTHON to select the Python executable for these modes.
+EOF
+}
+
+mode=${1:-baseline}
+if (( $# > 0 )); then
+    shift
+fi
+
+run_report() (
+        set -euo pipefail
+        mode=$1
+        shift
+        cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
+        report_python=${REPORT_PYTHON:-python3}
+        "$report_python" -c 'import sys; sys.exit("Report evaluation requires Python 3.12 or later.") if sys.version_info < (3, 12) else None'
+        case "$mode" in
+            compare) exec "$report_python" src/evaluate_transformer_results.py "$@" ;;
+            ablation) exec "$report_python" src/evaluate_transformer_ablation.py "$@" ;;
+        esac
+
+        comparison_args=()
+        cross_dataset=
+        selection_out=
+        test_csv=
+        while (( $# )); do
+            case "$1" in
+                --final-test|--test-csv|--selection-out|--cross-dataset|--matched-results)
+                    if (( $# < 2 )) || [[ -z "$2" || "$2" == --* ]]; then
+                        echo "Missing value for $1" >&2
+                        exit 2
+                    fi
+                    case "$1" in
+                        --cross-dataset) cross_dataset=$2 ;;
+                        --selection-out) selection_out=$2 ;;
+                        --test-csv) test_csv=$2 ;;
+                    esac
+                    if [[ "$1" != --cross-dataset ]]; then
+                        comparison_args+=("$1" "$2")
+                    fi
+                    shift 2
+                    ;;
+                *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+            esac
+        done
+        if [[ -z "$cross_dataset" || -z "$test_csv" || -z "$selection_out" ]]; then
+            echo "compare-and-ablate requires --cross-dataset, --test-csv and --selection-out" >&2
+            exit 2
+        fi
+        "$report_python" src/evaluate_transformer_results.py "${comparison_args[@]}"
+        exec "$report_python" src/evaluate_transformer_ablation.py \
+            --selection "$selection_out" --cross-dataset "$cross_dataset" --test-csv "$test_csv"
+)
+
+case "$mode" in
+    -h|--help) usage; exit 0 ;;
+    compare|ablation|compare-and-ablate) run_report "$mode" "$@"; exit $? ;;
+    baseline-then-compare|baseline-then-compare-and-ablate)
+        if (( $# == 0 )); then
+            usage >&2
+            exit 2
+        fi
+        ;;
+    baseline)
+        if (( $# )); then
+            usage >&2
+            exit 2
+        fi
+        ;;
+    *) usage >&2; exit 2 ;;
+esac
+
 echo "=========================================================="
 echo "Job Execution ID:    $SLURM_JOB_ID"
 echo "Allocated Node:      $(hostname)"
@@ -76,7 +159,11 @@ python src/train_transformer.py \
   --batch_size 128 \
   --lr 2e-5 \
   --epochs 10 \
-  --max_seq_length 128
+  --max_seq_length 128 || exit $?
+
+if [[ "$mode" == baseline-then-* ]]; then
+    run_report "${mode#baseline-then-}" "$@" || exit $?
+fi
 
 echo "=========================================================="
 echo "Job Completed at: $(date)"
